@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistant IHEC</title>
+    <style>
+        /* General Styles */
+        body {
+            font-family: 'Roboto', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            color: #4a90e2;
+            font-size: 2.5em;
+            margin: 20px 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Chatbox Styles */
+        #chatbox {
+            border: 1px solid #ddd;
+            padding: 20px;
+            height: 400px;
+            overflow-y: auto;
+            border-radius: 10px;
+            background: #eef2f7;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            padding: 12px 15px;
+            border-radius: 10px;
+            font-size: 1rem;
+            line-height: 1.5;
+            max-width: 70%;
+            word-wrap: break-word;
+            display: inline-block;
+        }
+
+        .user {
+            background-color: #4a90e2;
+            color: white;
+            align-self: flex-end;
+            text-align: right;
+        }
+
+        .assistant {
+            background-color: #ffffff;
+            color: #333;
+            align-self: flex-start;
+            text-align: left;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Form Styles */
+        form {
+            display: flex;
+            gap: 10px;
+        }
+
+        textarea {
+            flex-grow: 1;
+            resize: none;
+            font-size: 1rem;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #f9fafb;
+        }
+
+        button {
+            padding: 12px 20px;
+            font-size: 1rem;
+            color: white;
+            background-color: #4a90e2;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background-color: #cfd8dc;
+            cursor: not-allowed;
+        }
+
+        /* Control Buttons */
+        .control-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+        }
+
+        .control-buttons button {
+            background-color: #6c757d;
+            padding: 10px 20px;
+        }
+
+        .control-buttons button:hover {
+            background-color: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Assistant IHEC</h1>
+
+        <div id="chatbox"></div>
+
+        <form id="conversationForm">
+            <textarea id="message" placeholder="Posez votre question ici..." required></textarea>
+            <button type="submit" id="sendButton">Envoyer</button>
+        </form>
+
+        <div class="control-buttons">
+            <button id="deleteButton">Supprimer Mes Données</button>
+            <button id="clearButton">Effacer</button>
+            <button id="downloadButton">Télécharger la conversation</button>
+        </div>
+    </div>
+
+    <script>
+        const chatbox = document.getElementById("chatbox");
+        const conversationForm = document.getElementById("conversationForm");
+        const messageInput = document.getElementById("message");
+        const sendButton = document.getElementById("sendButton");
+        const clearButton = document.getElementById("clearButton");
+        const downloadButton = document.getElementById("downloadButton");
+
+        let conversation = [];
+
+        // Event listener for pressing 'Enter' key to submit the message
+        messageInput.addEventListener("keydown", function(event) {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault(); // Prevents new line
+                sendButton.click(); // Simulates button click
+            }
+        });
+
+        conversationForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            let userMessage = messageInput.value.trim();
+            if (!userMessage) return;
+
+            appendMessage("user", userMessage);
+            messageInput.value = "";
+            conversation.push({ role: "user", content: userMessage });
+
+            try {
+                let response = await fetch("/conversation", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ history: conversation })
+                });
+
+                if (!response.ok) {
+                    appendMessage("assistant", "<div style='color:red;'>Erreur : impossible de traiter la demande.</div>");
+                    return;
+                }
+
+                await handleStreamingResponse(response);
+            } catch (error) {
+                appendMessage("assistant", "<div style='color:red;'>Erreur : problème de connexion.</div>");
+            }
+        });
+
+        async function handleStreamingResponse(response) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let assistantMessage = "";
+            let messageElement = appendMessage("assistant", "");
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                let text = decoder.decode(value);
+                assistantMessage += text;
+                messageElement.innerHTML = assistantMessage;
+                chatbox.scrollTop = chatbox.scrollHeight;
+            }
+
+            conversation.push({ role: "assistant", content: assistantMessage });
+        }
+
+        function appendMessage(role, message) {
+            let messageElement = document.createElement("div");
+            messageElement.className = `message ${role}`;
+            messageElement.innerHTML = message;
+            chatbox.appendChild(messageElement);
+            chatbox.scrollTop = chatbox.scrollHeight;
+            return messageElement;
+        }
+
+        clearButton.addEventListener("click", () => {
+            chatbox.innerHTML = "";
+            conversation = [];
+        });
+
+        downloadButton.addEventListener("click", () => {
+            const chatText = conversation.map(msg => `[${msg.role.toUpperCase()}]: ${msg.content}`).join("\n");
+            const blob = new Blob([chatText], { type: "text/plain" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "conversation.txt";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        document.getElementById("deleteButton").addEventListener("click", async () => {
+            const userQuery = prompt("Entrez la question que vous souhaitez supprimer :");
+            if (!userQuery) return;
+
+            const response = await fetch("/delete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ user_query: userQuery })
+            });
+
+            const result = await response.json();
+            alert(result.message);
+        });
+    </script>
+</body>
+</html>

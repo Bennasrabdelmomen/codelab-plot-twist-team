@@ -1,0 +1,13 @@
+flask
+requests
+pandas
+fuzzywuzzy
+chromadb
+sentence_transformers
+threading
+langdetect
+spacy
+flask_limiter
+flask_cors
+cryptography
+mlflow
